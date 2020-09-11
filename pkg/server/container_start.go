@@ -40,9 +40,16 @@ import (
 
 // StartContainer starts the container.
 func (c *criService) StartContainer(ctx context.Context, r *runtime.StartContainerRequest) (retRes *runtime.StartContainerResponse, retErr error) {
-	cntr, err := c.containerStore.Get(r.GetContainerId())
+	if err := c.startContainer(ctx, r.GetContainerId()); err != nil {
+		return nil, err
+	}
+	return &runtime.StartContainerResponse{}, nil
+}
+
+func (c *criService) startContainer(ctx context.Context, containerID string, opts ...containerd.NewTaskOpts) (retErr error) {
+	cntr, err := c.containerStore.Get(containerID)
 	if err != nil {
-		return nil, errors.Wrapf(err, "an error occurred when try to find container %q", r.GetContainerId())
+		return errors.Wrapf(err, "an error occurred when try to find container %q", containerID)
 	}
 
 	id := cntr.ID
@@ -53,7 +60,7 @@ func (c *criService) StartContainer(ctx context.Context, r *runtime.StartContain
 	// Set starting state to prevent other start/remove operations against this container
 	// while it's being started.
 	if err := setContainerStarting(cntr); err != nil {
-		return nil, errors.Wrapf(err, "failed to set starting state for container %q", id)
+		return errors.Wrapf(err, "failed to set starting state for container %q", id)
 	}
 	defer func() {
 		if retErr != nil {
@@ -77,11 +84,11 @@ func (c *criService) StartContainer(ctx context.Context, r *runtime.StartContain
 	// Get sandbox config from sandbox store.
 	sandbox, err := c.sandboxStore.Get(meta.SandboxID)
 	if err != nil {
-		return nil, errors.Wrapf(err, "sandbox %q not found", meta.SandboxID)
+		return errors.Wrapf(err, "sandbox %q not found", meta.SandboxID)
 	}
 	sandboxID := meta.SandboxID
 	if sandbox.Status.Get().State != sandboxstore.StateReady {
-		return nil, errors.Errorf("sandbox container %q is not running", sandboxID)
+		return errors.Errorf("sandbox container %q is not running", sandboxID)
 	}
 
 	ioCreation := func(id string) (_ containerdio.IO, err error) {
@@ -96,13 +103,14 @@ func (c *criService) StartContainer(ctx context.Context, r *runtime.StartContain
 
 	ctrInfo, err := container.Info(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get container info")
+		return errors.Wrap(err, "failed to get container info")
 	}
 
 	taskOpts := c.taskOpts(ctrInfo.Runtime.Name)
+	taskOpts = append(taskOpts, opts...)
 	task, err := container.NewTask(ctx, ioCreation, taskOpts...)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create containerd task")
+		return errors.Wrap(err, "failed to create containerd task")
 	}
 	defer func() {
 		if retErr != nil {
@@ -118,7 +126,7 @@ func (c *criService) StartContainer(ctx context.Context, r *runtime.StartContain
 	// wait is a long running background request, no timeout needed.
 	exitCh, err := task.Wait(ctrdutil.NamespacedContext())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to wait for containerd task")
+		return errors.Wrap(err, "failed to wait for containerd task")
 	}
 	nric, err := nri.New()
 	if err != nil {
@@ -129,13 +137,13 @@ func (c *criService) StartContainer(ctx context.Context, r *runtime.StartContain
 			ID: sandboxID,
 		}
 		if _, err := nric.InvokeWithSandbox(ctx, task, v1.Create, nriSB); err != nil {
-			return nil, errors.Wrap(err, "nri invoke")
+			return errors.Wrap(err, "nri invoke")
 		}
 	}
 
 	// Start containerd task.
 	if err := task.Start(ctx); err != nil {
-		return nil, errors.Wrapf(err, "failed to start containerd task %q", id)
+		return errors.Wrapf(err, "failed to start containerd task %q", id)
 	}
 
 	// Update container start timestamp.
@@ -144,15 +152,14 @@ func (c *criService) StartContainer(ctx context.Context, r *runtime.StartContain
 		status.StartedAt = time.Now().UnixNano()
 		return status, nil
 	}); err != nil {
-		return nil, errors.Wrapf(err, "failed to update container %q state", id)
+		return errors.Wrapf(err, "failed to update container %q state", id)
 	}
 
 	// start the monitor after updating container state, this ensures that
 	// event monitor receives the TaskExit event and update container state
 	// after this.
 	c.eventMonitor.startExitMonitor(context.Background(), id, task.Pid(), exitCh)
-
-	return &runtime.StartContainerResponse{}, nil
+	return nil
 }
 
 // setContainerStarting sets the container into starting state. In starting state, the

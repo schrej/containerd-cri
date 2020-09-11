@@ -178,6 +178,22 @@ func (in *instrumentedService) StartContainer(ctx context.Context, r *runtime.St
 	return res, errdefs.ToGRPC(err)
 }
 
+func (in *instrumentedService) RestoreContainer(ctx context.Context, r *runtime.RestoreContainerRequest) (_ *runtime.RestoreContainerResponse, err error) {
+	if err := in.checkInitialized(); err != nil {
+		return nil, err
+	}
+	log.G(ctx).Infof("RestoreContainer for %q with %s", r.GetContainerId(), r.GetOptions().GetCheckpointPath())
+	defer func() {
+		if err != nil {
+			log.G(ctx).WithError(err).Errorf("RestoreContainer for %q failed", r.GetContainerId())
+		} else {
+			log.G(ctx).Infof("RestoreContainer for %q returns successfully", r.GetContainerId())
+		}
+	}()
+	res, err := in.c.RestoreContainer(ctrdutil.WithNamespace(ctx), r)
+	return res, errdefs.ToGRPC(err)
+}
+
 func (in *instrumentedService) ListContainers(ctx context.Context, r *runtime.ListContainersRequest) (res *runtime.ListContainersResponse, err error) {
 	if err := in.checkInitialized(); err != nil {
 		return nil, err
@@ -208,6 +224,22 @@ func (in *instrumentedService) ContainerStatus(ctx context.Context, r *runtime.C
 		}
 	}()
 	res, err = in.c.ContainerStatus(ctrdutil.WithNamespace(ctx), r)
+	return res, errdefs.ToGRPC(err)
+}
+
+func (in *instrumentedService) CheckpointContainer(ctx context.Context, r *runtime.CheckpointContainerRequest) (res *runtime.CheckpointContainerResponse, err error) {
+	if err := in.checkInitialized(); err != nil {
+		return nil, err
+	}
+	log.G(ctx).Infof("CheckpointContainer for %q at %s", r.GetContainerId(), r.GetOptions().GetCheckpointPath())
+	defer func() {
+		if err != nil {
+			log.G(ctx).WithError(err).Errorf("CheckpointContainer for %q failed", r.GetContainerId())
+		} else {
+			log.G(ctx).Infof("CheckpointContainer for %q returns successfully", r.GetContainerId())
+		}
+	}()
+	res, err = in.c.CheckpointContainer(ctrdutil.WithNamespace(ctx), r)
 	return res, errdefs.ToGRPC(err)
 }
 

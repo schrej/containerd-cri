@@ -68,6 +68,10 @@ service RuntimeService {
     // already been stopped.
     // TODO: what must the runtime do after the grace period is reached?
     rpc StopContainer(StopContainerRequest) returns (StopContainerResponse) {}
+    // CheckpointContainer creates a checkpoint of a container.
+    rpc CheckpointContainer(CheckpointContainerRequest) returns (CheckpointContainerResponse) {}
+    // RestoreContainer restores a container from a checkpoint.
+    rpc RestoreContainer(RestoreContainerRequest) returns (RestoreContainerResponse) {}
     // RemoveContainer removes the container. If the container is running, the
     // container must be forcibly removed.
     // This call is idempotent, and must not return an error if the container has
@@ -829,6 +833,42 @@ message RemoveContainerRequest {
 }
 
 message RemoveContainerResponse {}
+
+message CheckpointContainerRequest {
+    // ID of the container to start.
+    string container_id = 1;
+    // Options for the checkpoint creation.
+    CheckpointContainerOptions options = 2;
+}
+
+message CheckpointContainerResponse {}
+
+// CheckpointContainerOptions contains options for a CheckpointContainerRequest
+// Due to the amount of possible parameters, it is easier to implement this way.
+// TODO(schrej): Add all options that are supported by runc (?) 
+message CheckpointContainerOptions {
+    // Path where the checkpoint should be created
+    string checkpoint_path = 1;
+    // Whether to leave the container running after checkpoint creation.
+    bool leave_running = 2;
+}
+
+message RestoreContainerRequest {
+    // ID of the container to start.
+    string container_id = 1;
+    // Options for the checkpoint restore.
+    RestoreContainerOptions options = 2;
+}
+
+message RestoreContainerResponse {}
+
+// RestoreContainerOptions contains options for a RestoreContainerRequest
+// Due to the amount of possible parameters, it is easier to implement this way.
+// TODO(schrej): Add all options that are supported by runc (?) 
+message RestoreContainerOptions {
+    // Path of the checkpoint to restore.
+    string checkpoint_path = 1;
+}
 
 enum ContainerState {
     CONTAINER_CREATED = 0;
