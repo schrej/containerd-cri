@@ -1,6 +1,8 @@
 package server
 
 import (
+	"syscall"
+
 	"github.com/containerd/containerd"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -12,22 +14,21 @@ func (c *criService) CheckpointContainer(ctx context.Context, r *runtime.Checkpo
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to find container")
 	}
-	// opts := []containerd.CheckpointOpts{containerd.WithCheckpointTask, containerd.WithCheckpointImage, containerd.WithCheckpointRuntime, containerd.WithCheckpointRW}
-	// if !r.GetOptions().GetLeaveRunning() {
-	// 	opts = append(opts, containerd.WithCheckpointTaskExit)
-	// }
 	task, err := cntr.Container.Task(ctx, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to checkpoint container task")
 	}
-	_, err = task.Checkpoint(ctx, containerd.WithCheckpointImagePath(r.GetOptions().GetCheckpointPath()))
-	//img, err := cntr.Container.Checkpoint(ctx, r.GetOptions().GetCheckpointPath(), opts...)
+	opts := []containerd.CheckpointTaskOpts{containerd.WithCheckpointImagePath(r.GetOptions().GetCheckpointPath())}
+	if !r.GetOptions().LeaveRunning {
+		opts = append(opts, containerd.WithCheckpointExit())
+	}
+	_, err = task.Checkpoint(ctx, opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to checkpoint container")
 	}
 
 	if !r.GetOptions().GetLeaveRunning() {
-		task.Pause(ctx)
+		task.Kill(ctx, syscall.SIGKILL)
 	}
 
 	return &runtime.CheckpointContainerResponse{}, nil
